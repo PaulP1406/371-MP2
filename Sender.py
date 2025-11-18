@@ -1,43 +1,49 @@
-from Packet import Packet
-from utils import compute_checksum   # <-- you will need this function
+from packet import Packet
+from utils import compute_checksum
 
 class Sender:
     def __init__(self, socket, addr):
         self.socket = socket
         self.addr = addr
+        self.nextseqnum = 0  # alternating-bit sequence number
 
-    # ---- Helper Method ---- #
+    # ---- Helper ---- #
     def make_pkt(self, data):
-        return Packet(payload=data)
+        return Packet(seq=self.nextseqnum, payload=data)
 
-    # ---- Connection Setup (RDT 2.0 has no handshake) ---- #
+    # ---- Connection Setup ---- #
     def connect(self):
-        print("Sender: RDT 2.0 - No connection setup required.")
+        print("Sender: RDT 2.1 - No handshake required.")
 
     # ---- Reliable Data Transfer ---- #
     def rdt_send(self, data):
-        # 1. Make packet
-        pkt = self.make_pkt(data)
 
-        # 2. Send the packet
-        self.udt_send(pkt)
-        print("Sender: sent data packet")
+        # Create packet with current sequence number
+        pkt = Packet(seq=self.nextseqnum, payload=data)
 
-        # 3. Wait for ACK / NAK
         while True:
+            # 1. Send the packet
+            self.udt_send(pkt)
+            print(f"Sender: sent packet with seq={pkt.seq}")
+
+            # 2. Wait for response
             response = self.udt_rcv()
-
             if response is None:
-                continue  # keep waiting
+                continue
 
-            # Check if ACK/NAK payload matches
-            if response.payload == b"ACK":
-                print("Sender: ACK received → done")
+            # 3. Check corruption of ACK/NAK
+            if response.checksum != response.compute_checksum():
+                print("Sender: corrupted ACK/NAK → resend")
+                continue
+
+            # 4. If correct ACK received
+            if response.payload == b"ACK" and response.ack == self.nextseqnum:
+                print(f"Sender: received ACK{self.nextseqnum}")
+                self.nextseqnum = 1 - self.nextseqnum  # toggle 0 ↔ 1
                 break
 
-            elif response.payload == b"NAK":
-                print("Sender: NAK received → resending...")
-                self.udt_send(pkt)
+            # 5. Otherwise (NAK or wrong seq)
+            print("Sender: received NAK or wrong ACK → resend")
 
     # ---- Unreliable Channel Simulation ---- #
     def udt_send(self, packet):
@@ -52,16 +58,6 @@ class Sender:
         except BlockingIOError:
             return None
 
-    # ---- Timer (not used in RDT 2.0) ---- #
-    def start_timer(self):
-        pass
-
-    def stop_timer(self):
-        pass
-
-    def timeout(self):
-        pass
-
-    # ---- Closing Connection ---- #
+    # ---- Closing ---- #
     def close(self):
-        print("Sender: RDT 2.0 - No close required.")
+        print("Sender: RDT 2.1 - No teardown required.")
