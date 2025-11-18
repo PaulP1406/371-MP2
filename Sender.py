@@ -1,16 +1,23 @@
-import time, random
+import time
+import random
 from packet import Packet
 
+LOSS_PROB = 0.3
+TIMEOUT_INTERVAL = 1.0
+
 class Sender:
-    def __init__(self, socket, addr):
+    def __init__(self, socket, addr, window_size=4):
         self.socket = socket
         self.addr = addr
-        self.nextseqnum = 0
+
+        self.window_size = window_size
+        self.base = 0             # first unACKed packet
+        self.nextseqnum = 0       # next seq to use
+        self.sent_packets = {}    # seq → Packet
+
         self.timer_start = None
 
-    def connect(self):
-        print("Sender: ready (RDT 3.0).")
-
+    # Timer controls
     def start_timer(self):
         self.timer_start = time.time()
 
@@ -18,17 +25,15 @@ class Sender:
         self.timer_start = None
 
     def timer_expired(self):
-        # If the sender does not receive an ACK within 2 second, it will resend the packet.
         return (self.timer_start is not None and
-                time.time() - self.timer_start > 2.0)
+                time.time() - self.timer_start > TIMEOUT_INTERVAL)
 
+    # Unreliable send
     def udt_send(self, pkt):
         raw = pkt.encode()
 
-        # LOSS SIMULATION
-        # There is a 30% chance that the packet is "lost"
-        if random.random() < 0.3:
-            print("SIMULATING PACKET LOSS (DROPPING PACKET ON PURPOSE)")
+        if random.random() < LOSS_PROB:
+            print("DROPPING PACKET ON PURPOSE")
             return
 
         self.socket.sendto(raw, self.addr)
@@ -42,38 +47,68 @@ class Sender:
         except OSError:
             return None
 
+    # Main Go-Back-N send
     def rdt_send(self, data):
+        # Window full → wait
+        while self.nextseqnum >= self.base + self.window_size:
+            resp = self.udt_rcv()
+            if resp:
+                self._process_ack(resp)
+            if self.timer_expired():
+                self._timeout_resend()
+
+        # Create packet
         pkt = Packet(seq=self.nextseqnum, payload=data)
 
-        while True:
-            # Send packet
-            self.udt_send(pkt)
-            print(f"Sender: sent seq={pkt.seq}")
+        # Send packet
+        self.udt_send(pkt)
+        print(f"Sender: sent seq={pkt.seq}")
 
-            # Start timer
+        # Store packet for future resending
+        self.sent_packets[self.nextseqnum] = pkt
+
+        # Start timer if this is the first in window
+        if self.base == self.nextseqnum:
             self.start_timer()
 
-            while True:
-                resp = self.udt_rcv()
+        self.nextseqnum += 1
 
-                # Check timeout
-                if self.timer_expired():
-                    print("Sender: TIMEOUT → RESEND")
-                    break   # break inner loop → resend
+        # Wait for ACKs and handle timeout
+        while True:
+            resp = self.udt_rcv()
+            if resp:
+                self._process_ack(resp)
 
-                # No ACK yet
-                if resp is None:
-                    continue
+            # All packets ACKed
+            if self.base == self.nextseqnum:
+                return
 
-                # Corrupted ACK
-                if resp.checksum != resp.compute_checksum():
-                    print("Sender: corrupted ACK → ignore")
-                    continue
+            # Timeout → resend entire window
+            if self.timer_expired():
+                self._timeout_resend()
 
-                # Correct ACK
-                if resp.ack == self.nextseqnum:
-                    print(f"Sender: got ACK{resp.ack}")
-                    self.stop_timer()
-                    self.nextseqnum = 1 - self.nextseqnum
-                    return
+    # Handle ACK from receiver
+    def _process_ack(self, pkt):
+        if pkt.checksum != pkt.compute_checksum():
+            print("Sender: corrupted ACK → ignore")
+            return
 
+        print(f"Sender: got cumulative ACK {pkt.ack}")
+
+        self.base = pkt.ack + 1
+
+        if self.base == self.nextseqnum:
+            self.stop_timer()
+        else:
+            self.start_timer()
+
+    # retransmit all packets in window
+    def _timeout_resend(self):
+        print("Sender: TIMEOUT → RESEND WINDOW")
+
+        self.start_timer()
+
+        for seq in range(self.base, self.nextseqnum):
+            pkt = self.sent_packets[seq]
+            print(f"Sender: resending seq={seq}")
+            self.udt_send(pkt)
