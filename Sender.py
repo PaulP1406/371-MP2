@@ -1,41 +1,58 @@
-import Packet
-
-def make_pkt(self,data):
-        return Packet(payload=data)
+from packet import Packet
+from utils import compute_checksum   # <-- you will need this function
 
 class Sender:
     def __init__(self, socket, addr):
         self.socket = socket
         self.addr = addr
-    
-    # Helper method
-    
-    
-    # ---- Connection Setup ---- #
+
+    # ---- Helper Method ---- #
+    def make_pkt(self, data):
+        return Packet(payload=data)
+
+    # ---- Connection Setup (RDT 2.0 has no handshake) ---- #
     def connect(self):
-        pass
+        print("Sender: RDT 2.0 - No connection setup required.")
 
     # ---- Reliable Data Transfer ---- #
     def rdt_send(self, data):
-        make_pkt(data)
-        pass
+        # 1. Make packet
+        pkt = self.make_pkt(data)
 
-    # (Optional) Break data into segments
-    def split_into_segments(self, data):
-        pass
+        # 2. Send the packet
+        self.udt_send(pkt)
+        print("Sender: sent data packet")
 
-    # ---- Window / ACK Handling ---- #
-    def handle_ack(self, pkt):
-        pass
+        # 3. Wait for ACK / NAK
+        while True:
+            response = self.udt_rcv()
+
+            if response is None:
+                continue  # keep waiting
+
+            # Check if ACK/NAK payload matches
+            if response.payload == b"ACK":
+                print("Sender: ACK received → done")
+                break
+
+            elif response.payload == b"NAK":
+                print("Sender: NAK received → resending...")
+                self.udt_send(pkt)
 
     # ---- Unreliable Channel Simulation ---- #
     def udt_send(self, packet):
-        pass
+        raw = packet.encode()
+        self.socket.sendto(raw, self.addr)
 
     def udt_rcv(self):
-        pass
+        try:
+            raw, _ = self.socket.recvfrom(4096)
+            pkt = Packet.decode(raw)
+            return pkt
+        except BlockingIOError:
+            return None
 
-    # ---- Timer (for retransmissions) ---- #
+    # ---- Timer (not used in RDT 2.0) ---- #
     def start_timer(self):
         pass
 
@@ -47,4 +64,4 @@ class Sender:
 
     # ---- Closing Connection ---- #
     def close(self):
-        pass
+        print("Sender: RDT 2.0 - No close required.")
