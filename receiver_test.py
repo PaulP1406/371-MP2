@@ -1,5 +1,5 @@
 import socket
-from receiver import Receiver
+from Receiver import Receiver
 
 # Create UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

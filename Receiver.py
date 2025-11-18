@@ -1,4 +1,4 @@
-from packet import Packet
+from Packet import Packet
 from utils import compute_checksum
 
 class Receiver:
