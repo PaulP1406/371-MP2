@@ -1,63 +1,79 @@
+import time, random
 from packet import Packet
-from utils import compute_checksum
 
 class Sender:
     def __init__(self, socket, addr):
         self.socket = socket
         self.addr = addr
-        self.nextseqnum = 0  # alternating-bit sequence number
+        self.nextseqnum = 0
+        self.timer_start = None
 
-    # ---- Helper ---- #
-    def make_pkt(self, data):
-        return Packet(seq=self.nextseqnum, payload=data)
-
-    # ---- Connection Setup ---- #
     def connect(self):
-        print("Sender: RDT 2.1 - No handshake required.")
+        print("Sender: ready (RDT 3.0).")
 
-    # ---- Reliable Data Transfer ---- #
-    def rdt_send(self, data):
+    def start_timer(self):
+        self.timer_start = time.time()
 
-        # Create packet with current sequence number
-        pkt = Packet(seq=self.nextseqnum, payload=data)
+    def stop_timer(self):
+        self.timer_start = None
 
-        while True:
-            # 1. Send the packet
-            self.udt_send(pkt)
-            print(f"Sender: sent packet with seq={pkt.seq}")
+    def timer_expired(self):
+        # If the sender does not receive an ACK within 2 second, it will resend the packet.
+        return (self.timer_start is not None and
+                time.time() - self.timer_start > 2.0)
 
-            # 2. Wait for response
-            response = self.udt_rcv()
-            if response is None:
-                continue
+    def udt_send(self, pkt):
+        raw = pkt.encode()
 
-            # 3. Check corruption of ACK/NAK
-            if response.checksum != response.compute_checksum():
-                print("Sender: corrupted ACK/NAK → resend")
-                continue
+        # LOSS SIMULATION
+        # There is a 30% chance that the packet is "lost"
+        if random.random() < 0.3:
+            print("SIMULATING PACKET LOSS (DROPPING PACKET ON PURPOSE)")
+            return
 
-            # 4. If correct ACK received
-            if response.payload == b"ACK" and response.ack == self.nextseqnum:
-                print(f"Sender: received ACK{self.nextseqnum}")
-                self.nextseqnum = 1 - self.nextseqnum  # toggle 0 ↔ 1
-                break
-
-            # 5. Otherwise (NAK or wrong seq)
-            print("Sender: received NAK or wrong ACK → resend")
-
-    # ---- Unreliable Channel Simulation ---- #
-    def udt_send(self, packet):
-        raw = packet.encode()
         self.socket.sendto(raw, self.addr)
 
     def udt_rcv(self):
         try:
             raw, _ = self.socket.recvfrom(4096)
-            pkt = Packet.decode(raw)
-            return pkt
+            return Packet.decode(raw)
         except BlockingIOError:
             return None
+        except OSError:
+            return None
 
-    # ---- Closing ---- #
-    def close(self):
-        print("Sender: RDT 2.1 - No teardown required.")
+    def rdt_send(self, data):
+        pkt = Packet(seq=self.nextseqnum, payload=data)
+
+        while True:
+            # Send packet
+            self.udt_send(pkt)
+            print(f"Sender: sent seq={pkt.seq}")
+
+            # Start timer
+            self.start_timer()
+
+            while True:
+                resp = self.udt_rcv()
+
+                # Check timeout
+                if self.timer_expired():
+                    print("Sender: TIMEOUT → RESEND")
+                    break   # break inner loop → resend
+
+                # No ACK yet
+                if resp is None:
+                    continue
+
+                # Corrupted ACK
+                if resp.checksum != resp.compute_checksum():
+                    print("Sender: corrupted ACK → ignore")
+                    continue
+
+                # Correct ACK
+                if resp.ack == self.nextseqnum:
+                    print(f"Sender: got ACK{resp.ack}")
+                    self.stop_timer()
+                    self.nextseqnum = 1 - self.nextseqnum
+                    return
+

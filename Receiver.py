@@ -3,65 +3,52 @@ from packet import Packet
 class Receiver:
     def __init__(self, socket):
         self.sock = socket
-        self.expectedseqnum = 0    # alternating-bit receiver state
-        self.sender_addr = None    # will be filled after first packet
+        self.expectedseqnum = 0
+        self.sender_addr = None
 
-    # ---- Connection Setup ---- #
     def accept(self):
-        print("Receiver: ready to receive (RDT 2.1 - no handshake).")
+        print("Receiver: ready (RDT 3.0 - no handshake).")
 
-    # ---- Reliable Data Receiving ---- #
     def rdt_rcv(self):
         pkt = self.udt_rcv()
         if pkt is None:
             return
 
-        # 1. Check corruption
+        # Corruption
         if pkt.checksum != pkt.compute_checksum():
-            print(f"Receiver: CORRUPTED packet → send NAK{self.expectedseqnum}")
-            nak = Packet(ack=self.expectedseqnum, payload=b"NAK")
-            self.udt_send(nak)
+            print("Receiver: corrupted → ACK last good seq")
+            last_good = 1 - self.expectedseqnum
+            ack = Packet(ack=last_good, payload=b"ACK")
+            self.udt_send(ack)
             return
 
-        # 2. Correct AND expected sequence number
+        # Correct & expected
         if pkt.seq == self.expectedseqnum:
-            print(f"Receiver: got expected seq={pkt.seq} → delivering")
+            print(f"Receiver: got expected seq={pkt.seq} → deliver")
             self.deliver_data(pkt.payload)
 
             ack = Packet(ack=pkt.seq, payload=b"ACK")
             self.udt_send(ack)
 
-            # flip expected sequence number
             self.expectedseqnum = 1 - self.expectedseqnum
 
-        # 3. Duplicate old packet (seq != expectedseqnum)
         else:
-            print(f"Receiver: DUPLICATE pkt seq={pkt.seq}, expected={self.expectedseqnum}")
-            # Send ACK for last correctly delivered packet
-            last_good_seq = 1 - self.expectedseqnum
-            ack = Packet(ack=last_good_seq, payload=b"ACK")
+            print(f"Receiver: duplicate seq={pkt.seq} → resend ACK")
+            last_good = 1 - self.expectedseqnum
+            ack = Packet(ack=last_good, payload=b"ACK")
             self.udt_send(ack)
 
-    # ---- Deliver to application ---- #
     def deliver_data(self, data):
-        print("Delivered to application:", data)
+        print("Delivered:", data)
 
-    # ---- Unreliable Send ---- #
     def udt_send(self, packet):
         raw = packet.encode()
         self.sock.sendto(raw, self.sender_addr)
 
-    # ---- Unreliable Receive ---- #
     def udt_rcv(self):
         try:
             raw, addr = self.sock.recvfrom(4096)
-            pkt = Packet.decode(raw)
-            # remember sender address for replies and return only the Packet
             self.sender_addr = addr
-            return pkt
+            return Packet.decode(raw)
         except BlockingIOError:
             return None
-
-    # ---- Closing ---- #
-    def close(self):
-        print("Receiver: connection closed (RDT 2.1 - no teardown).")
