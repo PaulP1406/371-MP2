@@ -6,6 +6,9 @@ sock.setblocking(False)
 
 sender = Sender(sock, ("localhost", 5000), window_size=4)
 
+# ✔ ADD THIS
+sender.connect()  # <-- Perform handshake before sending
+
 messages = [b"A", b"B", b"C", b"D", b"E", b"F", b"G"]
 
 for m in messages:

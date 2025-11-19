@@ -11,11 +11,40 @@ class Sender:
         self.addr = addr
 
         self.window_size = window_size
-        self.base = 0             # first unACKed packet
-        self.nextseqnum = 0       # next seq to use
-        self.sent_packets = {}    # seq → Packet
+        self.base = 0
+        self.nextseqnum = 0
+        self.sent_packets = {}
 
         self.timer_start = None
+
+    # ------------------------------------------------------------
+    #  HANDSHAKE (SYN → SYN-ACK → ACK)
+    # ------------------------------------------------------------
+    def connect(self):
+        print("Sender: initiating handshake...")
+
+        # Step 1: Send SYN
+        syn = Packet(seq=0, ack=0, payload=b"SYN")
+        self.udt_send(syn)
+        print("Sender: SENT SYN")
+
+        # Step 2: Wait for SYN-ACK
+        while True:
+            pkt = self.udt_rcv()
+            if pkt and pkt.payload == b"SYN-ACK":
+                print("Sender: RECEIVED SYN-ACK")
+                break
+
+        # Step 3: Send final ACK
+        ack = Packet(seq=0, ack=0, payload=b"ACK")
+        self.udt_send(ack)
+        print("Sender: SENT ACK — connection established")
+
+        # Reset state
+        self.base = 0
+        self.nextseqnum = 0
+    # ------------------------------------------------------------
+
 
     # Timer controls
     def start_timer(self):
@@ -73,7 +102,7 @@ class Sender:
 
         self.nextseqnum += 1
 
-        # Wait for ACKs and handle timeout
+        # Wait for ACKs & timeouts
         while True:
             resp = self.udt_rcv()
             if resp:
@@ -83,7 +112,6 @@ class Sender:
             if self.base == self.nextseqnum:
                 return
 
-            # Timeout → resend entire window
             if self.timer_expired():
                 self._timeout_resend()
 
