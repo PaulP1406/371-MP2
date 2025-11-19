@@ -6,47 +6,52 @@ LOSS_PROB = 0.3
 TIMEOUT_INTERVAL = 1.0
 
 class Sender:
-    def __init__(self, socket, addr, window_size=4):
+    def __init__(self, socket, addr, window_size=10):
         self.socket = socket
         self.addr = addr
 
-        self.window_size = window_size
+        # --- GBN State ---
+        self.window_size = window_size        # sender pipeline window
         self.base = 0
         self.nextseqnum = 0
         self.sent_packets = {}
 
+        # --- Flow Control ---
+        self.receiver_rwnd = 9999             # updated by ACKs
+
+        # --- Congestion Control ---
+        self.cwnd = 1                         # start in slow start
+        self.ssthresh = 8                     # typical initial threshold
+
+        # Timer
         self.timer_start = None
 
-    # ------------------------------------------------------------
-    #  HANDSHAKE (SYN → SYN-ACK → ACK)
-    # ------------------------------------------------------------
+    # ======================================================
+    #                   HANDSHAKE
+    # ======================================================
     def connect(self):
         print("Sender: initiating handshake...")
 
-        # Step 1: Send SYN
-        syn = Packet(seq=0, ack=0, payload=b"SYN")
+        syn = Packet(payload=b"SYN")
         self.udt_send(syn)
         print("Sender: SENT SYN")
 
-        # Step 2: Wait for SYN-ACK
         while True:
             pkt = self.udt_rcv()
             if pkt and pkt.payload == b"SYN-ACK":
                 print("Sender: RECEIVED SYN-ACK")
                 break
 
-        # Step 3: Send final ACK
-        ack = Packet(seq=0, ack=0, payload=b"ACK")
+        ack = Packet(payload=b"ACK")
         self.udt_send(ack)
         print("Sender: SENT ACK — connection established")
 
-        # Reset state
         self.base = 0
         self.nextseqnum = 0
-    # ------------------------------------------------------------
 
-
-    # Timer controls
+    # ======================================================
+    #                    TIMER
+    # ======================================================
     def start_timer(self):
         self.timer_start = time.time()
 
@@ -57,10 +62,18 @@ class Sender:
         return (self.timer_start is not None and
                 time.time() - self.timer_start > TIMEOUT_INTERVAL)
 
-    # Unreliable send
+    # ======================================================
+    #                UNRELIABLE SEND
+    # ======================================================
     def udt_send(self, pkt):
         raw = pkt.encode()
 
+        # IMPORTANT: Do NOT drop handshake packets
+        if pkt.payload in [b"SYN", b"SYN-ACK", b"ACK"]:
+            self.socket.sendto(raw, self.addr)
+            return
+
+        # Drop only DATA packets
         if random.random() < LOSS_PROB:
             print("DROPPING PACKET ON PURPOSE")
             return
@@ -71,58 +84,77 @@ class Sender:
         try:
             raw, _ = self.socket.recvfrom(4096)
             return Packet.decode(raw)
-        except BlockingIOError:
-            return None
-        except OSError:
+        except (BlockingIOError, OSError):
             return None
 
-    # Main Go-Back-N send
+    # ======================================================
+    #              MAIN SEND (GBN + FC + CC)
+    # ======================================================
     def rdt_send(self, data):
-        # Window full → wait
-        while self.nextseqnum >= self.base + self.window_size:
+
+        # EFFECTIVE WINDOW:
+        #   pipeline limit (GBN)
+        #   receiver window (flow control)
+        #   congestion window (network control)
+        effective_win = int(min(self.window_size,
+                                self.receiver_rwnd,
+                                self.cwnd))
+
+        while (self.nextseqnum - self.base) >= effective_win:
             resp = self.udt_rcv()
             if resp:
                 self._process_ack(resp)
+                effective_win = int(min(self.window_size,
+                                        self.receiver_rwnd,
+                                        self.cwnd))
             if self.timer_expired():
                 self._timeout_resend()
 
-        # Create packet
+        # -------- Send packet --------
         pkt = Packet(seq=self.nextseqnum, payload=data)
-
-        # Send packet
         self.udt_send(pkt)
-        print(f"Sender: sent seq={pkt.seq}")
+        print(f"Sender: sent seq={pkt.seq}, cwnd={self.cwnd:.2f}, ssthresh={self.ssthresh}")
 
-        # Store packet for future resending
         self.sent_packets[self.nextseqnum] = pkt
 
-        # Start timer if this is the first in window
         if self.base == self.nextseqnum:
             self.start_timer()
 
         self.nextseqnum += 1
 
-        # Wait for ACKs & timeouts
+        # After sending, wait for ACKs / timeouts
         while True:
             resp = self.udt_rcv()
             if resp:
                 self._process_ack(resp)
-
-            # All packets ACKed
-            if self.base == self.nextseqnum:
                 return
 
             if self.timer_expired():
                 self._timeout_resend()
 
-    # Handle ACK from receiver
+    # ======================================================
+    #                  PROCESS ACK
+    # ======================================================
     def _process_ack(self, pkt):
+
         if pkt.checksum != pkt.compute_checksum():
-            print("Sender: corrupted ACK → ignore")
+            print("Sender: corrupted ACK → ignored")
             return
 
-        print(f"Sender: got cumulative ACK {pkt.ack}")
+        # FLOW CONTROL
+        self.receiver_rwnd = pkt.rwnd
 
+        print(f"Sender: got ACK={pkt.ack}, rwnd={pkt.rwnd}, cwnd={self.cwnd:.2f}")
+
+        # --- CONGESTION CONTROL LOGIC ---
+        if self.cwnd < self.ssthresh:
+            # Slow Start (exponential)
+            self.cwnd += 1
+        else:
+            # Congestion Avoidance (linear)
+            self.cwnd += 1 / self.cwnd
+
+        # Move GBN window
         self.base = pkt.ack + 1
 
         if self.base == self.nextseqnum:
@@ -130,13 +162,20 @@ class Sender:
         else:
             self.start_timer()
 
-    # retransmit all packets in window
+    # ======================================================
+    #               TIMEOUT -> MULTIPLICATIVE DECREASE
+    # ======================================================
     def _timeout_resend(self):
-        print("Sender: TIMEOUT → RESEND WINDOW")
+        print("Sender: TIMEOUT → RESEND WINDOW (CONGESTION)")
+
+        # Congestion response
+        self.ssthresh = max(1, self.cwnd / 2)
+        self.cwnd = 1
+        print(f"   NEW cwnd={self.cwnd}, NEW ssthresh={self.ssthresh}")
 
         self.start_timer()
 
         for seq in range(self.base, self.nextseqnum):
             pkt = self.sent_packets[seq]
-            print(f"Sender: resending seq={seq}")
+            print(f"   Resending seq={seq}")
             self.udt_send(pkt)
