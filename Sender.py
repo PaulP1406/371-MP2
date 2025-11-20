@@ -10,33 +10,46 @@ class Sender:
         self.socket = socket
         self.addr = addr
 
-        # --- GBN State ---
+        # GBN style states
         self.window_size = window_size        # sender pipeline window
         self.base = 0
         self.nextseqnum = 0
         self.sent_packets = {}
 
-        # --- Flow Control ---
-        self.receiver_rwnd = 9999             # updated by ACKs
+        # -flow control receiver window
+        self.receiver_rwnd = 9999             # will be updated by ACKs
 
-        # --- Congestion Control ---
+        # congestion control window + ssthresh
         self.cwnd = 1                         # start in slow start
         self.ssthresh = 8                     # typical initial threshold
 
         # Timer
         self.timer_start = None
+        
+        # Connection state
+        self.state = "CLOSED"
+        
+        # Fast retransmit (TCP Reno feature)
+        self.dup_ack_count = 0
+        self.last_ack_received = -1
 
-    # ======================================================
-    #                   HANDSHAKE
-    # ======================================================
+    # handshake
     def connect(self):
         print("Sender: initiating handshake...")
+        self.state = "SYN_SENT"
 
         syn = Packet(payload=b"SYN")
         self.udt_send(syn)
         print("Sender: SENT SYN")
 
+        # Add timeout for handshake
+        handshake_timeout = time.time() + 5.0
         while True:
+            if time.time() > handshake_timeout:
+                print("Sender: Handshake timeout, retrying...")
+                self.udt_send(syn)
+                handshake_timeout = time.time() + 5.0
+                
             pkt = self.udt_rcv()
             if pkt and pkt.payload == b"SYN-ACK":
                 print("Sender: RECEIVED SYN-ACK")
@@ -48,10 +61,9 @@ class Sender:
 
         self.base = 0
         self.nextseqnum = 0
+        self.state = "ESTABLISHED"
 
-    # ======================================================
-    #                    TIMER
-    # ======================================================
+    # timer methods
     def start_timer(self):
         self.timer_start = time.time()
 
@@ -62,9 +74,7 @@ class Sender:
         return (self.timer_start is not None and
                 time.time() - self.timer_start > TIMEOUT_INTERVAL)
 
-    # ======================================================
-    #                UNRELIABLE SEND
-    # ======================================================
+    # unreliable send and receive methods
     def udt_send(self, pkt):
         raw = pkt.encode()
 
@@ -73,7 +83,7 @@ class Sender:
             self.socket.sendto(raw, self.addr)
             return
 
-        # Drop only DATA packets
+        # Drop only DATA packets for realistic effect 
         if random.random() < LOSS_PROB:
             print("DROPPING PACKET ON PURPOSE")
             return
@@ -87,12 +97,13 @@ class Sender:
         except (BlockingIOError, OSError):
             return None
 
-    # ======================================================
-    #              MAIN SEND (GBN + FC + CC)
-    # ======================================================
+    # main reliable sent methods
     def rdt_send(self, data):
+        if self.state != "ESTABLISHED":
+            print("Sender: ERROR - Connection not established")
+            return
 
-        # EFFECTIVE WINDOW:
+        # EFFECTIVE WINDOW, take the minimum of these 3:
         #   pipeline limit (GBN)
         #   receiver window (flow control)
         #   congestion window (network control)
@@ -136,15 +147,36 @@ class Sender:
     #                  PROCESS ACK
     # ======================================================
     def _process_ack(self, pkt):
-
+        # check for corurption
         if pkt.checksum != pkt.compute_checksum():
             print("Sender: corrupted ACK → ignored")
             return
 
-        # FLOW CONTROL
+        # checker the receiver window from the ack from receiver side
         self.receiver_rwnd = pkt.rwnd
 
         print(f"Sender: got ACK={pkt.ack}, rwnd={pkt.rwnd}, cwnd={self.cwnd:.2f}")
+
+        # Duplicate ACK detection for fast retransmit
+        if pkt.ack == self.last_ack_received:
+            self.dup_ack_count += 1
+            print(f"Sender: Duplicate ACK detected, count={self.dup_ack_count}")
+            
+            # Fast Retransmit on 3 duplicate ACKs
+            if self.dup_ack_count == 3:
+                print("Sender: FAST RETRANSMIT triggered")
+                self.ssthresh = max(1, self.cwnd / 2)
+                self.cwnd = self.ssthresh + 3  # Fast recovery
+                
+                # Retransmit the lost packet
+                if self.base in self.sent_packets:
+                    print(f"   Fast retransmitting seq={self.base}")
+                    self.udt_send(self.sent_packets[self.base])
+                return
+        else:
+            # New ACK received
+            self.dup_ack_count = 0
+            self.last_ack_received = pkt.ack
 
         # --- CONGESTION CONTROL LOGIC ---
         if self.cwnd < self.ssthresh:
@@ -179,3 +211,49 @@ class Sender:
             pkt = self.sent_packets[seq]
             print(f"   Resending seq={seq}")
             self.udt_send(pkt)
+
+    # ======================================================
+    #               CONNECTION TEARDOWN (FIN)
+    # ======================================================
+    def close(self):
+        if self.state != "ESTABLISHED":
+            print("Sender: Connection already closed")
+            return
+            
+        print("Sender: Initiating connection close (FIN)...")
+        self.state = "FIN_WAIT_1"
+        
+        fin = Packet(payload=b"FIN")
+        self.udt_send(fin)
+        print("Sender: SENT FIN")
+        
+        # Wait for FIN-ACK
+        timeout = time.time() + 5.0
+        while True:
+            if time.time() > timeout:
+                print("Sender: FIN timeout, retrying...")
+                self.udt_send(fin)
+                timeout = time.time() + 5.0
+                
+            pkt = self.udt_rcv()
+            if pkt and pkt.payload == b"FIN-ACK":
+                print("Sender: RECEIVED FIN-ACK")
+                self.state = "FIN_WAIT_2"
+                break
+        
+        # Wait for receiver's FIN
+        timeout = time.time() + 5.0
+        while True:
+            if time.time() > timeout:
+                break
+                
+            pkt = self.udt_rcv()
+            if pkt and pkt.payload == b"FIN":
+                print("Sender: RECEIVED FIN from receiver")
+                break
+        
+        # Send final ACK
+        ack = Packet(payload=b"ACK")
+        self.udt_send(ack)
+        print("Sender: SENT final ACK — connection closed")
+        self.state = "CLOSED"

@@ -13,3 +13,7 @@ messages = [b"A", b"B", b"C", b"D", b"E", b"F", b"G"]
 
 for m in messages:
     sender.rdt_send(m)
+
+# Close the connection properly
+sender.close()
+print("Sender: All messages sent and connection closed")
