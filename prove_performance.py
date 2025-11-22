@@ -1,6 +1,7 @@
 """
 Performance proof script, run this after the receiver_test.py is already running
 The script idea and part of the logic is created with the help from ChatGPT
+Note: after every of the test suit is finish, we'll have to ctrl+c the terminal with the receiver_test.py running, and run the receiver_test again since every test suite will finish the connection and close it down.
 """
 
 import socket
@@ -223,7 +224,7 @@ def run_all_proofs():
     print("  5. Connection management (proper handshake/teardown)")
     print("\n" + "="*80)
     
-    input("\nPress Enter when receiver is ready...")
+    input("\nPress Enter when receiver is ready (launched in another terminal)...")
     
     results = {}
     

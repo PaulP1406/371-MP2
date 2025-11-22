@@ -143,9 +143,7 @@ class Sender:
             if self.timer_expired():
                 self._timeout_resend()
 
-    # ======================================================
-    #                  PROCESS ACK
-    # ======================================================
+    # process ack
     def _process_ack(self, pkt):
         # check for corruption
         if pkt.checksum != pkt.compute_checksum():
@@ -178,7 +176,7 @@ class Sender:
             self.dup_ack_count = 0
             self.last_ack_received = pkt.ack
 
-        # --- CONGESTION CONTROL LOGIC ---
+        # congestion control logic
         if self.cwnd < self.ssthresh:
             # Slow Start (exponential)
             self.cwnd += 1
@@ -194,9 +192,7 @@ class Sender:
         else:
             self.start_timer()
 
-    # ======================================================
-    #               TIMEOUT -> MULTIPLICATIVE DECREASE
-    # ======================================================
+    # Timeout -> multiplicative decrease
     def _timeout_resend(self):
         print("Sender: TIMEOUT → RESEND WINDOW (CONGESTION)")
 
@@ -212,9 +208,7 @@ class Sender:
             print(f"   Resending seq={seq}")
             self.udt_send(pkt)
 
-    # ======================================================
-    #               CONNECTION TEARDOWN (FIN)
-    # ======================================================
+    # connection tear down with FIN
     def close(self):
         if self.state != "ESTABLISHED":
             print("Sender: Connection already closed")
