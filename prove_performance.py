@@ -1,5 +1,6 @@
 """
 Performance proof script, run this after the receiver_test.py is already running
+The script idea and part of the logic is created with the help from ChatGPT
 """
 
 import socket
@@ -36,7 +37,7 @@ def prove_reliability():
     
     sender.close()
     
-    print(f"\n{'PROOF: 100% reliable delivery' if success else '✗ FAILED: Some packets lost'}")
+    print(f"\n{'PROOF: 100% reliable delivery' if success else 'FAILED: Some packets lost'}")
     print("="*70)
     
     return success
