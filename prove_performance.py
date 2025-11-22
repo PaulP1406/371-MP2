@@ -258,23 +258,6 @@ def run_all_proofs():
     print(f"  3. Congestion Control:   {'PROVEN' if results.get('congestion_control') else 'FAILED'}")
     print(f"  4. Flow Control:         {'PROVEN' if results.get('flow_control') else 'FAILED'}")
     print(f"  5. Connection Mgmt:      {'PROVEN' if results.get('connection_mgmt') else 'FAILED'}")
-    
-    all_passed = all(results.values())
-    
-    print("\n" + "="*80)
-    if all_passed:
-        print(" " * 15 + "ACCEPTABLE PERFORMANCE PROVEN")
-        print("\nThe protocol successfully demonstrates:")
-        print("  • Reliable, ordered delivery despite network loss")
-        print("  • TCP Reno congestion control (slow start, congestion avoidance)")
-        print("  • Flow control preventing receiver overflow")
-        print("  • Proper connection establishment and teardown")
-        print("  • Acceptable throughput given 30% packet loss")
-        print("\nThis meets the requirements for a reliable transport protocol.")
-    else:
-        print(" " * 20 + "NEEDS IMPROVEMENT")
-        print("\nSome tests did not pass. Review the failures above.")
-    
-    print("="*80)
+
 if __name__ == "__main__":
     run_all_proofs()
