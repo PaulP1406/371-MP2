@@ -7,9 +7,7 @@ sock.setblocking(False)
 
 receiver = Receiver(sock)
 
-# ✔ ADD THIS
 receiver.accept()  # <-- Perform handshake first
 
-# ✔ After handshake, start receiving data
 while True:
     receiver.rdt_rcv()

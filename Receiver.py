@@ -82,30 +82,34 @@ class Receiver:
 
         # Handle connection teardown (FIN)
         if pkt.payload == b"FIN":
-            print("Receiver: RECEIVED FIN, closing connection...")
+            print("Receiver: RECEIVED FIN, initiating close...")
             self.state = "CLOSE_WAIT"
             
-            # Send FIN-ACK
-            finack = Packet(payload=b"FIN-ACK")
-            self.udt_send(finack)
-            print("Receiver: SENT FIN-ACK")
+            # Step 1: Send ACK for sender's FIN
+            ack = Packet(payload=b"ACK")
+            self.udt_send(ack)
+            print("Receiver: SENT ACK for FIN")
             
-            # Send own FIN
+            # Step 2: Send own FIN (receiver actively closes too)
             fin = Packet(payload=b"FIN")
             self.udt_send(fin)
             print("Receiver: SENT FIN")
+            self.state = "LAST_ACK"
             
-            # Wait for final ACK
-            timeout = time.time() + 2.0
+            # Step 3: Wait for final ACK from sender
+            timeout = time.time() + 5.0
             while True:
                 if time.time() > timeout:
-                    break
+                    print("Receiver: Timeout waiting for final ACK, retrying FIN...")
+                    self.udt_send(fin)
+                    timeout = time.time() + 5.0
+                    
                 pkt2 = self.udt_rcv()
                 if pkt2 and pkt2.payload == b"ACK":
                     print("Receiver: RECEIVED final ACK — connection closed")
+                    self.state = "CLOSED"
                     break
             
-            self.state = "CLOSED"
             return
 
         if self.state != "ESTABLISHED":

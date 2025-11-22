@@ -147,10 +147,10 @@ class Sender:
     #                  PROCESS ACK
     # ======================================================
     def _process_ack(self, pkt):
-        # check for corurption
+        # check for corruption
         if pkt.checksum != pkt.compute_checksum():
             print("Sender: corrupted ACK → ignored")
-            return
+            return  # Discard corrupted ACK, do nothing
 
         # checker the receiver window from the ack from receiver side
         self.receiver_rwnd = pkt.rwnd
@@ -223,11 +223,12 @@ class Sender:
         print("Sender: Initiating connection close (FIN)...")
         self.state = "FIN_WAIT_1"
         
+        # Step 1: Send FIN
         fin = Packet(payload=b"FIN")
         self.udt_send(fin)
         print("Sender: SENT FIN")
         
-        # Wait for FIN-ACK
+        # Step 2: Wait for ACK from receiver
         timeout = time.time() + 5.0
         while True:
             if time.time() > timeout:
@@ -236,24 +237,32 @@ class Sender:
                 timeout = time.time() + 5.0
                 
             pkt = self.udt_rcv()
-            if pkt and pkt.payload == b"FIN-ACK":
-                print("Sender: RECEIVED FIN-ACK")
+            if pkt and pkt.payload == b"ACK":
+                print("Sender: RECEIVED ACK for FIN")
                 self.state = "FIN_WAIT_2"
                 break
         
-        # Wait for receiver's FIN
+        # Step 3: Wait for receiver's FIN
         timeout = time.time() + 5.0
         while True:
             if time.time() > timeout:
+                print("Sender: Timeout waiting for receiver FIN")
                 break
                 
             pkt = self.udt_rcv()
             if pkt and pkt.payload == b"FIN":
                 print("Sender: RECEIVED FIN from receiver")
+                self.state = "TIME_WAIT"
                 break
         
-        # Send final ACK
+        # Step 4: Send final ACK
         ack = Packet(payload=b"ACK")
         self.udt_send(ack)
-        print("Sender: SENT final ACK — connection closed")
+        print("Sender: SENT final ACK")
+        
+        # TIME_WAIT state (in real TCP this would be 2*MSL, we'll use 2 seconds)
+        print("Sender: Entering TIME_WAIT state (2 seconds)...")
+        time.sleep(2.0)
+        
         self.state = "CLOSED"
+        print("Sender: Connection closed")
