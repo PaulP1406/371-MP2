@@ -1,13 +1,27 @@
 import socket
+import time
 from receiver import Receiver
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(("localhost", 5000))
-sock.setblocking(False)
 
-receiver = Receiver(sock)
+def main():
+    # Create a single UDP socket for the receiver
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("localhost", 5000))
+    sock.setblocking(False)
 
-receiver.accept()  # <-- Perform handshake first
+    receiver = Receiver(sock)
 
-while True:
-    receiver.rdt_rcv()
+    while True:
+        if receiver.state == "CLOSED":
+            ok = receiver.accept()
+            if not ok:
+                time.sleep(0.01)
+                continue
+
+        receiver.rdt_rcv()
+
+        time.sleep(0.001)
+
+
+if __name__ == "__main__":
+    main()
