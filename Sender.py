@@ -70,6 +70,16 @@ class Sender:
         return (self.timer_start is not None and
                 time.time() - self.timer_start > TIMEOUT_INTERVAL)
 
+    def check_events(self):
+        # Process any pending ACKs
+        resp = self.udt_rcv()
+        if resp:
+            self._process_ack(resp)
+        
+        # Check for timeout
+        if self.timer_expired():
+            self._timeout_resend()
+
     # --- CHANGED: Send EVERYTHING so Wireshark sees it ---
     def udt_send(self, pkt):
         raw = pkt.encode()

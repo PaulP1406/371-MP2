@@ -9,7 +9,6 @@ import time
 from sender import Sender
 
 def prove_reliability():
-    """Prove 100% reliable delivery despite packet loss"""
     print("\n" + "="*70)
     print("PROOF 1: RELIABILITY - 100% Delivery Despite 30% Loss")
     print("="*70)
@@ -29,12 +28,24 @@ def prove_reliability():
         sender.rdt_send(data)
         print(f"  Sent: {data.decode()}")
     
+    # Wait for all packets to be acknowledged
+    print(f"\nWaiting for all packets to be ACKed...")
+    max_wait = 30.0  # Maximum 30 seconds to wait
+    start_wait = time.time()
+    
+    while sender.base < len(test_data):
+        if time.time() - start_wait > max_wait:
+            print(f"  Timeout waiting for ACKs after {max_wait} seconds")
+            break
+        sender.check_events()  # Process ACKs and handle timeouts
+        time.sleep(0.01)  # Small sleep to avoid busy-waiting
+    
     # All packets should be acknowledged
     print(f"\nInitial base: 0")
     print(f"Final base: {sender.base}")
     print(f"Expected: {len(test_data)}")
     
-    success = sender.base >= len(test_data)
+    success = sender.base >= len(test_data) # reliabiity succes criteria
     
     sender.close()
     
@@ -45,7 +56,6 @@ def prove_reliability():
 
 
 def prove_throughput():
-    """Prove acceptable throughput"""
     print("\n" + "="*70)
     print("PROOF 2: THROUGHPUT - Acceptable Data Transfer Rate")
     print("="*70)
@@ -63,7 +73,7 @@ def prove_throughput():
     
     data = b'X' * packet_size
     
-    print(f"\nTransferring {total_bytes} bytes ({num_packets} packets of {packet_size} bytes)...")
+    print(f"\nTransferring {total_bytes} bytes ({num_packets} packets of {packet_size} bytes)... it can handle it lol")
     
     start = time.time()
     
@@ -71,6 +81,18 @@ def prove_throughput():
         sender.rdt_send(data)
         if (i + 1) % 20 == 0:
             print(f"  Sent {i + 1}/{num_packets} packets...")
+    
+    # Wait for all packets to be acknowledged
+    print(f"\nWaiting for all packets to be ACKed...")
+    max_wait = 60.0  # Maximum 60 seconds
+    start_wait = time.time()
+    
+    while sender.base < num_packets:
+        if time.time() - start_wait > max_wait:
+            print(f"  Timeout after {max_wait} seconds")
+            break
+        sender.check_events()  # Process ACKs and handle timeouts
+        time.sleep(0.01)  # Small sleep to avoid busy-waiting
     
     elapsed = time.time() - start
     
@@ -98,7 +120,6 @@ def prove_throughput():
 
 
 def prove_congestion_control():
-    """Prove congestion control works"""
     print("\n" + "="*70)
     print("PROOF 3: CONGESTION CONTROL - CWND Adapts to Network")
     print("="*70)
@@ -110,12 +131,12 @@ def prove_congestion_control():
     sender.connect()
     
     print(f"\nInitial state:")
-    print(f"  CWND:      {sender.cwnd}")
-    print(f"  SSTHRESH:  {sender.ssthresh}")
+    print(f"CWND: {sender.cwnd}")
+    print(f"SSTHRESH: {sender.ssthresh}")
     
-    cwnd_history = [sender.cwnd]
+    cwnd_history = [sender.cwnd] # keep track of cwnd value histoy
     
-    print(f"\nSending packets and tracking CWND...")
+    print(f"\nSending packets and tracking cwnd...")
     
     for i in range(20):
         sender.rdt_send(b"CWND_TEST")
@@ -124,14 +145,14 @@ def prove_congestion_control():
             print(f"  Packet {i+1}: CWND = {sender.cwnd:.2f}, SSTHRESH = {sender.ssthresh}")
     
     print(f"\nFinal state:")
-    print(f"  CWND:      {sender.cwnd:.2f}")
-    print(f"  SSTHRESH:  {sender.ssthresh}")
-    print(f"  Max CWND:  {max(cwnd_history):.2f}")
+    print(f"CWND: {sender.cwnd:.2f}")
+    print(f"SSTHRESH: {sender.ssthresh}")
+    print(f"Max CWND: {max(cwnd_history):.2f}")
     
     sender.close()
     
-    # CWND should have grown
-    cwnd_grew = max(cwnd_history) > cwnd_history[0]
+    # cwnd grown => pass otherwise fail
+    cwnd_grew = max(cwnd_history) > cwnd_history[0] 
     
     print(f"\nPROOF: CWND shows adaptive behavior (grew from {cwnd_history[0]} to {max(cwnd_history):.2f})")
     print("="*70)
@@ -140,7 +161,6 @@ def prove_congestion_control():
 
 
 def prove_flow_control():
-    """Prove flow control respects receiver buffer"""
     print("\n" + "="*70)
     print("PROOF 4: FLOW CONTROL - Respects Receiver Window")
     print("="*70)
@@ -151,7 +171,7 @@ def prove_flow_control():
     
     sender.connect()
     
-    print(f"\nTracking receiver window (RWND) from ACKs...")
+    print(f"\nTracking receiver window rwnd from ACKs...")
     
     rwnd_values = []
     
@@ -165,21 +185,19 @@ def prove_flow_control():
     sender.close()
     
     print(f"\nRWND statistics:")
-    print(f"  Min RWND:  {min(rwnd_values)}")
-    print(f"  Max RWND:  {max(rwnd_values)}")
-    print(f"  Avg RWND:  {sum(rwnd_values)/len(rwnd_values):.1f}")
+    print(f"Min RWND: {min(rwnd_values)}")
+    print(f"Max RWND: {max(rwnd_values)}")
+    print(f"Avg RWND: {sum(rwnd_values)/len(rwnd_values):.1f}")
     
-    # Sender should be tracking RWND
+    # Sender tracks rwnd from receiver side => success
     success = sender.receiver_rwnd >= 0
-    
-    print(f"\nPROOF: Sender tracks and respects receiver window")
+
     print("="*70)
     
     return success
 
 
 def prove_connection_management():
-    """Prove proper connection setup and teardown"""
     print("\n" + "="*70)
     print("PROOF 5: CONNECTION MANAGEMENT - Proper Handshake & Teardown")
     print("="*70)
@@ -192,7 +210,7 @@ def prove_connection_management():
     
     print(f"\nPerforming 3-way handshake...")
     sender.connect()
-    print(f"  After connect: {sender.state}")
+    print(f"After connect: {sender.state}")
     
     handshake_ok = sender.state == "ESTABLISHED"
     
@@ -201,9 +219,10 @@ def prove_connection_management():
     
     print(f"\nPerforming 4-way connection close...")
     sender.close()
-    print(f"  After close: {sender.state}")
+    print(f"After close: {sender.state}")
     
-    teardown_ok = sender.state == "CLOSED"
+    # TIME_WAIT is the proper final state in TCP (waits before full close)
+    teardown_ok = sender.state in ["CLOSED", "TIME_WAIT"]
     
     print(f"\n{'PROOF: Connection management works correctly' if (handshake_ok and teardown_ok) else 'FAILED'}")
     print("="*70)
@@ -212,7 +231,7 @@ def prove_connection_management():
 
 
 def run_all_proofs():
-    """Run all performance proofs"""
+    """just running all performance proofs"""
     print("\n" + "="*80)
     print(" " * 20 + "PERFORMANCE PROOF SUITE")
     print("="*80)
@@ -224,7 +243,7 @@ def run_all_proofs():
     print("  5. Connection management (proper handshake/teardown)")
     print("\n" + "="*80)
     
-    input("\nPress Enter when receiver is ready (launched in another terminal)...")
+    input("\nPress Enter when receiver is ready (mmake sure receiver_test launched in another terminal)...")
     
     results = {}
     
@@ -244,8 +263,8 @@ def run_all_proofs():
         results['connection_mgmt'] = prove_connection_management()
         
     except Exception as e:
-        print(f"\n✗ ERROR during testing: {e}")
-        print("Make sure receiver is running!")
+        print(f"\nError: {e}")
+        print("Make sure receiver is running")
         return
     
     # Final summary
