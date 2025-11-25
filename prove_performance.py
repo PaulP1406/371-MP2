@@ -103,11 +103,11 @@ def prove_throughput():
     sender.close()
     
     print(f"\nResults:")
-    print(f"  Total bytes sent: {total_bytes}")
-    print(f"  Time elapsed:     {elapsed:.2f} seconds")
-    print(f"  Throughput:       {throughput_bytes_per_sec:.2f} bytes/sec")
-    print(f"  Throughput:       {throughput_kbps:.2f} Kbps")
-    print(f"  Throughput:       {throughput_bytes_per_sec/1024:.2f} KB/s")
+    print(f"Total bytes sent: {total_bytes}")
+    print(f"Time elapsed: {elapsed:.2f} seconds")
+    print(f"Throughput: {throughput_bytes_per_sec:.2f} bytes/sec")
+    print(f"Throughput: {throughput_kbps:.2f} Kbps")
+    print(f"Throughput: {throughput_bytes_per_sec/1024:.2f} KB/s")
     
     # With 30% loss, > 10 KB/s is good
     threshold = 10000  # 10 KB/s

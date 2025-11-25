@@ -22,7 +22,7 @@ import socket
 import time
 import threading
 import statistics
-from Sender import Sender
+from sender import Sender
 
 class FairnessTest:
     """Test protocol fairness with multiple competing flows"""
@@ -98,9 +98,6 @@ class FairnessTest:
         return fairness
     
     def test_fairness_sequential(self, num_flows=3, receiver_port=5000):
-        """
-        Test fairness by running flows sequentially (baseline - should be fair)
-        """
         print("\n" + "="*70)
         print("FAIRNESS TEST 1: SEQUENTIAL FLOWS (Baseline)")
         print("="*70)
@@ -136,9 +133,6 @@ class FairnessTest:
         return is_fair
     
     def test_tcp_fairness_properties(self):
-        """
-        Test that protocol has TCP-like fairness properties
-        """
         print("\n" + "="*70)
         print("FAIRNESS TEST 2: TCP RENO PROPERTIES")
         print("="*70)
@@ -215,7 +209,6 @@ class FairnessTest:
         return True
     
     def run_all_fairness_tests(self):
-        """Run complete fairness test suite"""
         print("\n" + "="*70)
         print("PROTOCOL FAIRNESS TEST SUITE")
         print("="*70)
@@ -248,15 +241,15 @@ class FairnessTest:
         print("FAIRNESS TEST SUMMARY")
         print("="*70)
         
-        print(f"\n1. Sequential Flows:        {'✓ FAIR' if results['sequential'] else '✗ UNFAIR'}")
-        print(f"2. TCP Reno Properties:     {'✓ PASS' if results['tcp_properties'] else '✗ FAIL'}")
-        print(f"3. Convergence Theory:      {'✓ PROVEN' if results['convergence'] else '✗ UNPROVEN'}")
+        print(f"\n1. Sequential Flows:        {'FAIR' if results['sequential'] else 'UNFAIR'}")
+        print(f"2. TCP Reno Properties:     {'PASS' if results['tcp_properties'] else 'FAIL'}")
+        print(f"3. Convergence Theory:      {'PROVEN' if results['convergence'] else 'UNPROVEN'}")
         
         all_pass = all(results.values())
         
         print("\n" + "="*70)
         if all_pass:
-            print("✓✓✓ PROTOCOL IS FAIR ✓✓✓")
+            print("PROTOCOL IS FAIR ")
             print("\nEvidence:")
             print("  • TCP Reno AIMD ensures fairness mathematically")
             print("  • All flows use identical congestion control")
@@ -267,104 +260,10 @@ class FairnessTest:
             print("  which has been mathematically proven to converge to")
             print("  fair bandwidth allocation (Chiu & Jain, 1989).")
         else:
-            print("⚠ FAIRNESS ISSUES DETECTED")
+            print("PROTOCOL ISN'T FAIR")
         print("="*70)
         
         return all_pass
-
-
-def prove_fairness_theoretically():
-    """
-    Provide theoretical proof of fairness
-    """
-    print("\n" + "="*70)
-    print("THEORETICAL PROOF OF FAIRNESS")
-    print("="*70)
-    
-    print("""
-WHY THIS PROTOCOL IS FAIR:
---------------------------
-
-1. TCP RENO AIMD CONVERGENCE
-   Your protocol implements TCP Reno congestion control with:
-   • Additive Increase: cwnd += 1/cwnd per ACK (congestion avoidance)
-   • Multiplicative Decrease: cwnd = cwnd/2 on loss
-   
-   AIMD is proven to converge to fair bandwidth allocation.
-
-2. MATHEMATICAL PROOF (Chiu & Jain, 1989)
-   
-   Consider two flows sharing a link:
-   • Flow 1 rate: x₁
-   • Flow 2 rate: x₂
-   • Link capacity: C
-   
-   Phase Plane Analysis:
-   ┌─────────────────────────────────┐
-   │ x₂                              │
-   │  ↑              Fairness        │
-   │  │             x₁ = x₂          │
-   │  │            /                 │
-   │  │          /                   │
-   │  │        /                     │
-   │  │      /   Efficiency          │
-   │  │    /    x₁ + x₂ = C          │
-   │  │  /                           │
-   │  │/___________________________  │
-   │    →  x₁                        │
-   └─────────────────────────────────┘
-   
-   • Additive Increase: moves parallel to fairness line
-   • Multiplicative Decrease: moves toward origin along efficiency line
-   • System oscillates around intersection point where x₁ = x₂ = C/2
-
-3. FAIRNESS INDEX
-   Jain's Fairness Index for n flows:
-   
-   F = (Σxᵢ)² / (n × Σxᵢ²)
-   
-   For perfectly equal allocation (x₁ = x₂ = ... = xₙ):
-   F = (n×x)² / (n × n×x²) = 1.0
-   
-   TCP Reno achieves F ≥ 0.75 in practice.
-
-4. EMPIRICAL EVIDENCE
-   
-   Studies show TCP Reno is fair:
-   • Floyd & Fall (1999): "TCP is reasonably fair"
-   • Multiple TCP flows converge to equal bandwidth
-   • Standard for Internet fairness since 1990s
-
-5. WHY YOUR PROTOCOL IS FAIR
-   
-   Your implementation includes:
-   ✓ AIMD congestion control (slow start + congestion avoidance)
-   ✓ Multiplicative decrease on timeout (cwnd = 1)
-   ✓ Fast recovery (cwnd = ssthresh/2 + 3)
-   ✓ Same algorithm for all flows
-   ✓ No flow prioritization
-   
-   Therefore: YOUR PROTOCOL IS FAIR
-
-CONCLUSION:
------------
-The protocol is fair because it faithfully implements TCP Reno,
-which has been mathematically proven and empirically validated
-to provide fair bandwidth allocation among competing flows.
-
-REFERENCES:
------------
-[1] D. Chiu and R. Jain, "Analysis of the Increase and Decrease 
-    Algorithms for Congestion Avoidance in Computer Networks," 
-    Computer Networks and ISDN Systems, 1989.
-
-[2] S. Floyd and K. Fall, "Promoting the Use of End-to-End 
-    Congestion Control in the Internet," IEEE/ACM Transactions 
-    on Networking, 1999.
-
-[3] V. Jacobson, "Congestion Avoidance and Control," ACM SIGCOMM 
-    Computer Communication Review, 1988.
-    """)
 
 
 if __name__ == "__main__":
@@ -374,7 +273,6 @@ if __name__ == "__main__":
     print("\nThis script proves the protocol is fair by:")
     print("  1. Testing Jain's Fairness Index with multiple flows")
     print("  2. Verifying TCP Reno AIMD properties")
-    print("  3. Showing mathematical convergence to fairness")
     print()
     print("Fairness means: Multiple flows get approximately equal bandwidth")
     print("="*70)
@@ -382,14 +280,3 @@ if __name__ == "__main__":
     # Run theoretical proof
     prove_fairness_theoretically()
     
-    # Option to run empirical tests
-    print("\n\nEMPIRICAL TESTING:")
-    response = input("\nRun empirical fairness tests? (requires receiver running) [y/N]: ")
-    
-    if response.lower() == 'y':
-        tester = FairnessTest()
-        tester.run_all_fairness_tests()
-    else:
-        print("\nSkipping empirical tests.")
-        print("\nNote: Theoretical proof is sufficient to claim fairness.")
-        print("TCP Reno AIMD is proven fair by Chiu & Jain (1989).")
