@@ -6,7 +6,7 @@ from receiver import Receiver
 def main():
     # Create a single UDP socket for the receiver
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("localhost", 5000))
+    sock.bind(("0.0.0.0", 5000))  # Listen on all network interfaces
     sock.setblocking(False)
 
     receiver = Receiver(sock)
